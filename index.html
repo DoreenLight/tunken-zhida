@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#B42318">
+  <title>屯垦智答 2.0 —— 三五九旅红色文化研究与文创设计工作台</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- 移动端顶部栏 -->
+    <header class="mobile-topbar">
+      <button id="btn-mobile-menu" class="icon-btn" type="button" aria-label="打开导航菜单">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="mobile-brand">
+        <span class="seal-mark seal-sm">垦</span>
+        <span class="mobile-brand-title">屯垦智答 2.0</span>
+      </div>
+      <button id="btn-mobile-drawer" class="icon-btn" type="button" aria-label="模型与 API 配置">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </header>
+
+    <div id="sidebar-backdrop" class="sidebar-backdrop" style="display: none;"></div>
+
+    <!-- 左侧固定导航边栏 -->
+    <aside id="app-sidebar" class="sidebar">
+      <div class="sidebar-top">
+        <div class="brand-block" id="brand-home-btn" role="button" tabindex="0">
+          <div class="seal-mark">垦</div>
+          <div class="brand-text">
+            <div class="brand-name">屯垦智答 2.0</div>
+            <div class="brand-desc">三五九旅文化研究工作台</div>
+          </div>
+        </div>
+
+        <nav class="nav-list" aria-label="核心工作区">
+          <div class="nav-section-label">工作模块</div>
+          <button class="nav-item active" data-tab="chat" type="button">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span class="nav-copy">
+              <span class="nav-title">智能多轮问答</span>
+              <span class="nav-sub">双轨 RAG 考据溯源</span>
+            </span>
+          </button>
+
+          <button class="nav-item" data-tab="campaign" type="button">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </span>
+            <span class="nav-copy">
+              <span class="nav-title">传播方案与问卷</span>
+              <span class="nav-sub">小红书 · 抖音 · 问卷</span>
+            </span>
+          </button>
+
+          <button class="nav-item" data-tab="product" type="button">
+            <span class="nav-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </span>
+            <span class="nav-copy">
+              <span class="nav-title">实用实体文创设计</span>
+              <span class="nav-sub">5 款实体工业打样</span>
+            </span>
+          </button>
+        </nav>
+
+        <!-- 双轨知识库档案卡 -->
+        <div class="kb-sidebar-card">
+          <div class="kb-sidebar-header">
+            <span class="kb-sidebar-title">双轨知识库</span>
+            <button id="header-counts" class="kb-view-link" type="button" title="查看全部双轨文献与访谈切片">
+              <span>档案目录</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+          <div id="kb-stat-numbers" class="kb-stat-row">
+            <div class="kb-stat-cell">
+              <span class="kb-stat-label">权威史料</span>
+              <span class="kb-stat-value" id="stat-official-count">5</span>
+            </div>
+            <div class="kb-stat-cell">
+              <span class="kb-stat-label">一手访谈</span>
+              <span class="kb-stat-value" id="stat-custom-count">1</span>
+            </div>
+          </div>
+          <button id="btn-open-slice-modal" class="btn-outline-full" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>录入调研素材</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-bottom">
+        <div class="runtime-status" id="runtime-mode-badge">
+          <span class="status-dot"></span>
+          <span id="runtime-mode-text">云端独立运行</span>
+        </div>
+        <button id="btn-open-drawer" class="btn-sidebar-settings" type="button">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>模型与 API 配置</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- 右侧主工作区 -->
+    <main class="workspace">
+
+      <!-- ===================================================================
+           模块一：智能多轮问答 (Chat RAG + 双轨考据展开板)
+           =================================================================== -->
+      <section id="tab-chat" class="panel-section chat-view">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">可溯源学术考证对话</h1>
+            <p class="view-subtitle">严格依据权威史料与一手调研切片回答，句末附档案引用角标</p>
+          </div>
+          <div class="view-actions">
+            <button id="btn-clear-chat" class="btn-secondary" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+              <span>清空对话</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="chat-scroll-area">
+          <div id="chat-message-list" class="chat-stream"></div>
+        </div>
+
+        <div class="chat-composer-wrap">
+          <div class="quick-pills" aria-label="推荐考据提问">
+            <button class="quick-pill" type="button">第一把手工打制的坎土曼有什么历史考据与老军垦口述？</button>
+            <button class="quick-pill" type="button">93岁老战士张文生口述中提到的打铁手心血泡实录</button>
+            <button class="quick-pill" type="button">三五九旅官兵当年如何在零下20度冰水中修筑胜利渠？</button>
+            <button class="quick-pill" type="button">红柳地窝子生活史与地下两米的革命乐观主义</button>
+          </div>
+
+          <div class="chat-composer">
+            <input
+              id="chat-input"
+              type="text"
+              class="chat-input"
+              placeholder="输入历史考据问题，例如：第一把坎土曼是如何用废炮弹壳锻造的？"
+            />
+            <button id="btn-send-chat" class="btn-primary" type="button">
+              <span>发送提问</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           模块二：新媒体全案传播策划与调研问卷生成
+           =================================================================== -->
+      <section id="tab-campaign" class="panel-section campaign-view" style="display: none;">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">新媒体传播全案与调研问卷</h1>
+            <p class="view-subtitle">输入三五九旅传播命题，自动生成小红书图文、短视频分镜脚本与李克特调研问卷</p>
+          </div>
+        </div>
+
+        <div class="surface-card topic-bar">
+          <div class="topic-bar-main">
+            <label for="campaign-topic-input" class="field-label">传播核心命题</label>
+            <div class="topic-input-row">
+              <input
+                id="campaign-topic-input"
+                type="text"
+                class="text-input"
+                value="让三五九旅第一把坎土曼走进青年"
+                placeholder="输入推广主题，例如：红柳地窝子生活史走进高校青年"
+              />
+              <button id="btn-generate-campaign" class="btn-primary" type="button">
+                <span>一键生成全案与问卷</span>
+              </button>
+            </div>
+            <div class="topic-presets">
+              <span class="preset-hint">快速命题：</span>
+              <button class="preset-chip" type="button" data-topic="让三五九旅第一把坎土曼走进青年">第一把坎土曼</button>
+              <button class="preset-chip" type="button" data-topic="红柳地窝子地下两米的青春岁月">红柳地窝子</button>
+              <button class="preset-chip" type="button" data-topic="多浪河零下二十度冰水筑就百里胜利渠">百里胜利渠</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="surface-card campaign-board">
+          <div class="board-toolbar">
+            <div class="sub-tabs" role="tablist">
+              <button class="sub-tab-btn active" data-sub="xhs" type="button">小红书爆款图文</button>
+              <button id="subtab-douyin-btn" class="sub-tab-btn" data-sub="douyin" type="button">抖音短视频分镜 (4个镜头)</button>
+              <button class="sub-tab-btn" data-sub="survey" type="button">传播效果调研问卷 (Markdown)</button>
+            </div>
+            <div class="board-actions">
+              <button id="btn-copy-xhs" class="btn-secondary" type="button">复制小红书文案</button>
+              <button id="btn-copy-survey" class="btn-secondary" type="button">复制问卷 Markdown</button>
+              <button id="btn-download-survey" class="btn-primary-soft" type="button">导出 .md 文件</button>
+            </div>
+          </div>
+
+          <div class="board-body">
+            <!-- 小红书板块 -->
+            <div id="subtab-xhs" class="xhs-grid">
+              <div class="xhs-cover-card">
+                <div>
+                  <div class="xhs-archive-code">ARCHIVE NO. 359 · COVER CONCEPT</div>
+                  <div id="xhs-title" class="xhs-cover-title">
+                    家人们破防了！70年前这届军垦青年，竟用废炮弹壳‘手搓’出开荒神器
+                  </div>
+                  <div class="xhs-cover-desc">
+                    视觉建议：粗粝红炉火星淬火特写微距，右侧当代青年工装背包打卡，牛皮纸撕边标语“没有路，就用双手砸出一条路”。
+                  </div>
+                </div>
+                <div id="xhs-tags" class="xhs-tags"></div>
+              </div>
+              <div id="xhs-body" class="xhs-body-card"></div>
+            </div>
+
+            <!-- 抖音短视频分镜板块 -->
+            <div id="subtab-douyin" style="display: none;">
+              <div class="douyin-meta-bar">
+                <div class="douyin-title-line">
+                  <span class="meta-label">脚本名称</span>
+                  <span id="douyin-script-title" class="douyin-title-val">《回响在冻土下的打铁声》（60秒短视频/分镜头脚本）</span>
+                </div>
+                <div id="douyin-script-bpm" class="douyin-bgm">BGM 指导：低沉心跳 -> 激昂打铁重音 -> 壮阔冬不拉交响</div>
+              </div>
+              <div class="table-wrap">
+                <table class="douyin-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 140px;">镜头 / 时码</th>
+                      <th style="width: 300px;">画面内容</th>
+                      <th style="width: 220px;">音效与配乐</th>
+                      <th>台词与旁白</th>
+                    </tr>
+                  </thead>
+                  <tbody id="douyin-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 调研问卷板块 -->
+            <div id="subtab-survey" style="display: none;">
+              <div id="survey-rendered-box" class="survey-paper"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
+           模块三：实用实体文创概念设计与生图
+           =================================================================== -->
+      <section id="tab-product" class="panel-section product-view" style="display: none;">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">实用实体文创工业设计</h1>
+            <p class="view-subtitle">聚焦高频实用日常器物，输出材质规格、色彩体系、商业棚拍提示词与产品概念图</p>
+          </div>
+          <span class="count-pill">已收录 5 款日常文创实体</span>
+        </div>
+
+        <div class="surface-card carrier-selector-card">
+          <div id="carriers-grid" class="carriers-grid"></div>
+          <div class="product-custom-bar">
+            <input
+              id="product-topic-input"
+              type="text"
+              class="text-input"
+              placeholder="可选：输入定制文化元素或主题，如：第一把坎土曼、百里胜利渠水文、红柳地窝子"
+            />
+            <button id="btn-generate-product" class="btn-primary" type="button">生成定制方案与概念图</button>
+          </div>
+        </div>
+
+        <div class="surface-card product-studio">
+          <div class="product-studio-grid">
+            <!-- 左侧工业规格参数 -->
+            <div class="product-spec-col">
+              <div class="spec-header">
+                <div>
+                  <div class="spec-eyebrow">INDUSTRIAL PRODUCT SPEC · 工业设计规格</div>
+                  <h2 id="prod-title" class="spec-title"></h2>
+                </div>
+                <span class="spec-badge">纯白底商业棚拍级</span>
+              </div>
+
+              <div class="spec-block">
+                <div class="spec-block-label">色彩定义与色卡体系</div>
+                <div id="prod-swatches" class="swatch-row"></div>
+                <p id="prod-color" class="spec-block-text"></p>
+              </div>
+
+              <div class="spec-block">
+                <div class="spec-block-label">表面材质与加工工艺</div>
+                <p id="prod-material" class="spec-block-text"></p>
+              </div>
+
+              <div class="spec-block">
+                <div class="spec-block-label">实用功能亮点</div>
+                <p id="prod-features" class="spec-block-text"></p>
+              </div>
+
+              <div class="prompt-card">
+                <div class="prompt-card-head">
+                  <span>商业产品摄影生图 Prompt</span>
+                  <button id="btn-copy-prompt" class="prompt-copy-btn" type="button">复制英文 Prompt</button>
+                </div>
+                <div id="prod-prompt" class="prompt-code"></div>
+              </div>
+            </div>
+
+            <!-- 右侧纯白棚拍展示画幅 -->
+            <div class="product-preview-col">
+              <div class="preview-head">
+                <span class="spec-block-label" style="margin: 0;">实体文创视觉效果图</span>
+                <span class="preview-meta">800 × 800 · Studio White</span>
+              </div>
+
+              <div class="product-image-box" id="prod-image-box" title="点击放大查看">
+                <div id="prod-img-loading" class="img-loading-mask" style="display: none;">
+                  <div class="spinner"></div>
+                  <span>正在渲染实体文创概念图...</span>
+                </div>
+                <img id="prod-image" src="" alt="文创设计图" />
+                <span class="img-zoom-hint">点击放大预览</span>
+              </div>
+
+              <div class="preview-actions">
+                <span class="preview-foot-note">支持工厂打样与方案提案</span>
+                <div class="preview-btn-group">
+                  <button id="btn-reload-img" class="btn-secondary" type="button">重新生成图片</button>
+                  <button id="btn-download-img" class="btn-primary" type="button">下载设计图</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="workspace-footer">
+        <span>生在井冈山 · 长在南泥湾 · 转战数万里 · 屯垦在天山</span>
+        <span>屯垦智答 2.0 · 三五九旅红色文化研究与文创设计工作台</span>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 录入一手调研素材弹窗 -->
+  <div id="slice-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>录入实地调研访谈 / 老军垦口述笔记</h3>
+        <button id="btn-close-slice-modal" class="modal-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body-stack">
+        <div class="sample-banner">
+          <span>示范田野调查口述样本：</span>
+          <button id="btn-fill-sample" class="btn-secondary" type="button">填入 93 岁老军垦张文生口述</button>
+        </div>
+        <div>
+          <label for="new-slice-title" class="field-label">素材标题</label>
+          <input id="new-slice-title" type="text" class="text-input" placeholder="例如：2024 阿拉尔老军垦口述访谈录" />
+        </div>
+        <div>
+          <label for="new-slice-source" class="field-label">出处与调研队伍</label>
+          <input id="new-slice-source" type="text" class="text-input" placeholder="例如：大学生红色文化调研队实录" />
+        </div>
+        <div>
+          <label for="new-slice-content" class="field-label">访谈正文（即时载入检索池并保存在本地浏览器）</label>
+          <textarea id="new-slice-content" rows="4" class="text-input textarea-input" placeholder="粘贴一手调研录音文字整理或口述笔记..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-cancel-slice-modal" class="btn-secondary" type="button">取消</button>
+        <button id="btn-submit-slice" class="btn-primary" type="button">载入双轨知识库</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 双轨知识库总览弹窗 -->
+  <div id="kb-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card modal-wide">
+      <div class="modal-header">
+        <h3>双轨知识库档案总览（权威史料 + 一手调研）</h3>
+        <button id="btn-close-kb-modal" class="modal-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div id="kb-list-container" class="kb-list"></div>
+      <div class="modal-footer modal-footer-between">
+        <button id="btn-reset-slices" class="btn-secondary btn-danger-text" type="button">重置为默认双轨知识库</button>
+        <button id="btn-close-kb-footer" class="btn-primary" type="button">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 全局配置抽屉 -->
+  <div id="drawer-overlay" class="drawer-overlay" style="display: none;"></div>
+  <aside id="config-drawer" class="drawer-content" style="display: none;">
+    <div>
+      <div class="modal-header">
+        <h3>全局模型与 API 配置</h3>
+        <button id="btn-close-drawer" class="modal-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body-stack">
+        <div>
+          <label for="cfg-model-select" class="field-label">基座推理模型</label>
+          <select id="cfg-model-select" class="text-input">
+            <option value="gemini-3.8-flash">Google Gemini 3.8 Flash（推荐）</option>
+            <option value="gemini-flash-latest">Gemini Flash Latest</option>
+            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite</option>
+            <option value="deepseek-chat">DeepSeek Chat（兼容协议）</option>
+          </select>
+        </div>
+        <div>
+          <label for="cfg-api-key" class="field-label">API Key 授权密钥（仅存本地浏览器）</label>
+          <input id="cfg-api-key" type="password" class="text-input" placeholder="留空即自动启用三五九旅专家研习库" />
+          <p class="helper-text">
+            即使不填写 API Key 或无后端服务，本系统内置的客户端双轨 TF-IDF 检索与专家研习库仍可完整运行；填写密钥后可直接调用在线大模型。
+          </p>
+        </div>
+        <button id="btn-save-key" class="btn-primary" type="button" style="width: 100%;">保存配置</button>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      支持直接通过浏览器「添加到桌面 / 安装应用」作为独立软件打开
+    </div>
+  </aside>
+
+  <!-- 图片放大灯箱 -->
+  <div id="img-lightbox" class="lightbox-overlay" style="display: none;">
+    <div class="lightbox-inner">
+      <button id="btn-close-lightbox" class="lightbox-close" type="button" aria-label="关闭预览">×</button>
+      <img id="lightbox-img" src="" alt="文创设计大图" />
+      <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+  </div>
+
+  <!-- 全局 Toast 通知 -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="./js/app.js"></script>
+</body>
+</html>
