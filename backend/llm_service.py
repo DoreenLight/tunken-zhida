@@ -1,7 +1,9 @@
 """
-大模型与智能体综合服务 (LLM & Agent Service)
-支持三五九旅多轮可溯源问答、全案传播与问卷自动生成、实体文创概念设计与生图。
-具备高可用 Google Gemini / DeepSeek 兼容以及专家级离线 Mock Fallback。
+大模型与混合 RAG 智能助手服务 2.5 (Streaming LLM & Hybrid RAG Service)
+支持：
+- 多平台真实 Token 级 SSE 流式输出（SiliconFlow 硅基流动 / DeepSeek / 通义千问 / Google Gemini / 自定义 OpenAI 兼容接口）
+- API 连通性一键检测
+- 无 API Key 时的精准句子级抽取式问答（Extractive QA）与零误报闲聊响应
 """
 
 import asyncio
@@ -11,34 +13,89 @@ import logging
 import re
 import urllib.parse
 import zlib
-from typing import Dict, Any, AsyncGenerator, List, Optional
+from typing import Dict, Any, AsyncGenerator, List, Optional, Tuple
 import httpx
 
 from backend.presets import (
-    DEFAULT_KNOWLEDGE_SLICES,
     PRODUCT_CARRIERS,
     MOCK_CAMPAIGN_SURVEY_RESULT,
 )
 from backend.prompts import (
-    SYSTEM_PROMPT_CHAT_RAG,
+    SYSTEM_PROMPT_CHAT_HYBRID,
+    SYSTEM_PROMPT_CHAT_STRICT,
     SYSTEM_PROMPT_CAMPAIGN_SURVEY,
     SYSTEM_PROMPT_PRODUCT_DESIGN,
     build_chat_user_prompt,
     build_campaign_user_prompt,
     build_product_user_prompt,
 )
+from backend.rag_engine import global_rag_engine
 
 logger = logging.getLogger("llm_service")
 logging.basicConfig(level=logging.INFO)
 
+PROVIDER_DEFAULTS: Dict[str, Dict[str, str]] = {
+    "siliconflow": {
+        "base_url": "https://api.siliconflow.cn/v1",
+        "default_model": "Qwen/Qwen2.5-7B-Instruct",
+    },
+    "deepseek": {
+        "base_url": "https://api.deepseek.com/v1",
+        "default_model": "deepseek-chat",
+    },
+    "dashscope": {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "default_model": "qwen-plus",
+    },
+    "gemini": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "default_model": "gemini-2.5-flash",
+    },
+}
+
+LEGACY_GEMINI_ALIASES = {
+    "gemini-3.8-flash": "gemini-2.5-flash",
+    "gemini-3.5-flash-lite": "gemini-2.5-flash-lite",
+}
+
 
 class LLMService:
     def __init__(self):
-        self.http_client = httpx.AsyncClient(timeout=45.0)
+        self.http_client = httpx.AsyncClient(timeout=60.0)
 
     async def close(self):
         """优雅关闭 HTTP 客户端连接池"""
         await self.http_client.aclose()
+
+    def _resolve_provider(
+        self,
+        provider: Optional[str],
+        base_url: Optional[str],
+        model_name: Optional[str]
+    ) -> Tuple[str, str, str]:
+        """解析协议类型 ('openai' | 'gemini')、请求地址与实际模型名"""
+        prov = (provider or "").strip().lower()
+        model = (model_name or "").strip()
+        b_url = (base_url or "").strip()
+
+        if not prov:
+            if b_url and "googleapis.com" not in b_url:
+                prov = "custom"
+            elif "deepseek" in model.lower():
+                prov = "deepseek"
+            elif "/" in model or model.lower().startswith("qwen"):
+                prov = "siliconflow"
+            else:
+                prov = "gemini"
+
+        if prov == "gemini":
+            actual_model = LEGACY_GEMINI_ALIASES.get(model, model or "gemini-2.5-flash")
+            return "gemini", PROVIDER_DEFAULTS["gemini"]["base_url"], actual_model
+
+        preset = PROVIDER_DEFAULTS.get(prov, {})
+        resolved_url = (b_url or preset.get("base_url") or "https://api.siliconflow.cn/v1").rstrip("/")
+        actual_model = model or preset.get("default_model") or "Qwen/Qwen2.5-7B-Instruct"
+        return "openai", resolved_url, actual_model
 
     def _extract_json_object(self, raw_text: Optional[str]) -> Optional[Dict[str, Any]]:
         """从模型响应中安全提取 JSON 对象"""
@@ -59,160 +116,233 @@ class LLMService:
         except Exception:
             return None
 
-    async def call_gemini(self, api_key: str, model: str, system_prompt: str, user_prompt: str) -> Optional[str]:
-        """调用 Google Gemini API"""
-        if not api_key:
-            return None
+    async def call_llm_complete(
+        self,
+        api_key: str,
+        model: Optional[str],
+        system_prompt: str,
+        user_prompt: str,
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None,
+        max_tokens: int = 3500
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """非流式完整调用（用于全案 JSON、文创规格 JSON 与连通性检测），返回 (text, error)"""
+        key = (api_key or "").strip()
+        if not key:
+            return None, "未提供 API Key"
 
-        actual_model = model or "gemini-3.8-flash"
-        if "deepseek" in actual_model.lower():
-            return await self.call_openai_compatible(
-                api_key=api_key,
-                base_url="https://api.deepseek.com/v1",
-                model=actual_model,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt
-            )
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{actual_model}:generateContent?key={api_key}"
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-            "systemInstruction": {"role": "user", "parts": [{"text": system_prompt}]},
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 3500}
-        }
+        protocol, resolved_url, actual_model = self._resolve_provider(provider, base_url, model)
 
         try:
-            resp = await self.http_client.post(url, json=payload, headers={"Content-Type": "application/json"})
-            if resp.status_code == 200:
-                data = resp.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
+            if protocol == "gemini":
+                url = f"{resolved_url}/models/{actual_model}:generateContent?key={key}"
+                payload = {
+                    "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                    "systemInstruction": {"role": "user", "parts": [{"text": system_prompt}]},
+                    "generationConfig": {"temperature": 0.35, "maxOutputTokens": max_tokens}
+                }
+                resp = await self.http_client.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
                     if parts:
-                        return parts[0].get("text", "")
-            else:
-                logger.warning(f"Gemini API returned status {resp.status_code}: {resp.text}")
-        except Exception as e:
-            logger.warning(f"Gemini API call failed: {e}")
+                        return parts[0].get("text", ""), None
+                    return None, "Gemini 返回内容为空"
+                return None, f"Gemini HTTP {resp.status_code}: {resp.text[:180]}"
 
-        return None
-
-    async def call_openai_compatible(
-        self, api_key: str, model: str, system_prompt: str, user_prompt: str, base_url: str = "https://api.deepseek.com/v1"
-    ) -> Optional[str]:
-        """调用 OpenAI / DeepSeek 兼容接口"""
-        if not api_key:
-            return None
-
-        url = f"{base_url.rstrip('/')}/chat/completions"
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-        payload = {
-            "model": model or "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            "temperature": 0.35,
-            "max_tokens": 3500
-        }
-
-        try:
+            url = f"{resolved_url}/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": actual_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.35,
+                "max_tokens": max_tokens
+            }
             resp = await self.http_client.post(url, json=payload, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
                 choices = data.get("choices", [])
                 if choices:
-                    return choices[0].get("message", {}).get("content", "")
+                    return choices[0].get("message", {}).get("content", ""), None
+                return None, "接口未返回有效 choices"
+            return None, f"HTTP {resp.status_code}: {resp.text[:180]}"
         except Exception as e:
-            logger.warning(f"OpenAI compatible call error: {e}")
+            logger.warning(f"LLM complete error: {e}")
+            return None, str(e)
 
-        return None
+    async def stream_llm_tokens(
+        self,
+        api_key: str,
+        model: Optional[str],
+        system_prompt: str,
+        user_prompt: str,
+        history: Optional[List[Dict[str, str]]] = None,
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
+        """真正的 Token 级流式大模型生成器（支持 OpenAI 兼容 SSE 与 Gemini SSE）"""
+        key = (api_key or "").strip()
+        if not key:
+            return
+
+        protocol, resolved_url, actual_model = self._resolve_provider(provider, base_url, model)
+
+        if protocol == "gemini":
+            url = f"{resolved_url}/models/{actual_model}:streamGenerateContent?alt=sse&key={key}"
+            payload = {
+                "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+                "systemInstruction": {"role": "user", "parts": [{"text": system_prompt}]},
+                "generationConfig": {"temperature": 0.35, "maxOutputTokens": 3500}
+            }
+            async with self.http_client.stream("POST", url, json=payload) as resp:
+                if resp.status_code != 200:
+                    err_body = (await resp.aread()).decode("utf-8", errors="ignore")
+                    raise RuntimeError(f"Gemini HTTP {resp.status_code}: {err_body[:160]}")
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    raw_json = line[5:].strip()
+                    if not raw_json or raw_json == "[DONE]":
+                        continue
+                    try:
+                        chunk_obj = json.loads(raw_json)
+                        parts = chunk_obj.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            txt = part.get("text", "")
+                            if txt:
+                                yield txt
+                    except Exception:
+                        continue
+            return
+
+        # OpenAI 兼容协议流式请求
+        url = f"{resolved_url}/chat/completions"
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        messages = [{"role": "system", "content": system_prompt}]
+        if history:
+            for turn in history[-6:]:
+                r = turn.get("role")
+                c = (turn.get("content") or "").strip()
+                if r in ("user", "assistant") and c:
+                    messages.append({"role": r, "content": c[:600]})
+        messages.append({"role": "user", "content": user_prompt})
+
+        payload = {
+            "model": actual_model,
+            "messages": messages,
+            "temperature": 0.35,
+            "max_tokens": 3500,
+            "stream": True
+        }
+
+        async with self.http_client.stream("POST", url, json=payload, headers=headers) as resp:
+            if resp.status_code != 200:
+                err_body = (await resp.aread()).decode("utf-8", errors="ignore")
+                raise RuntimeError(f"API HTTP {resp.status_code}: {err_body[:160]}")
+            async for line in resp.aiter_lines():
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                raw_json = line[5:].strip()
+                if not raw_json or raw_json == "[DONE]":
+                    break
+                try:
+                    chunk_obj = json.loads(raw_json)
+                    delta = chunk_obj.get("choices", [{}])[0].get("delta", {})
+                    content_piece = delta.get("content") or ""
+                    if content_piece:
+                        yield content_piece
+                except Exception:
+                    continue
+
+    async def test_connection(
+        self,
+        provider: Optional[str],
+        base_url: Optional[str],
+        api_key: str,
+        model: Optional[str]
+    ) -> Dict[str, Any]:
+        """验证用户配置的 API 密钥与模型连通性"""
+        _, resolved_url, actual_model = self._resolve_provider(provider, base_url, model)
+        reply, err = await self.call_llm_complete(
+            api_key=api_key,
+            model=actual_model,
+            system_prompt="你是一个简洁的连通性测试助手。",
+            user_prompt="请仅回复：连接正常",
+            provider=provider,
+            base_url=base_url,
+            max_tokens=32
+        )
+        if reply:
+            return {
+                "ok": True,
+                "model": actual_model,
+                "endpoint": resolved_url,
+                "reply": reply.strip()[:40],
+                "message": f"模型 {actual_model} 连接验证成功"
+            }
+        return {
+            "ok": False,
+            "model": actual_model,
+            "endpoint": resolved_url,
+            "message": f"连接失败：{err or '未知错误'}"
+        }
 
     def generate_image_url(self, prompt: str, seed: int = 359) -> str:
-        """调用 Pollinations.ai 极速生成高精产品摄影展示图"""
+        """生成商业产品摄影展示图 URL"""
         encoded_prompt = urllib.parse.quote(prompt.strip())
         return f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=800&height=800&nologo=true&seed={seed}&model=flux"
 
-    def _build_mock_chat_answer(self, query: str, retrieved_slices: List[Dict[str, Any]]) -> str:
-        """基于检索切片与历史关键词生成高保真考据回答，并确保引用角标不越界"""
-        max_idx = max(1, len(retrieved_slices))
-        c_idx = lambda n: min(n, max_idx)
-
-        top_item = retrieved_slices[0] if retrieved_slices else None
-        top_doc = top_item["slice"] if top_item else None
-        if top_doc and str(top_doc.get("id", "")).startswith("FIELD-USR-") and top_item.get("similarity", 0) >= 0.52:
-            lines = [
-                f"根据双轨知识库最新录入的一手实地调研素材（《{top_doc.get('title', '实地访谈')}》，来源：{top_doc.get('source', '调研实录')}）考据[1]：",
-                "",
-                f"{top_doc.get('content', '').strip()}[1]"
-            ]
-            if len(retrieved_slices) > 1:
-                second_doc = retrieved_slices[1]["slice"]
-                lines.extend([
-                    "",
-                    f"结合馆藏档案《{second_doc.get('title', '')}》互证：{second_doc.get('content', '')[:120].strip()}……[{c_idx(2)}]"
-                ])
-            return "\n".join(lines)
-
-        if any(k in query for k in ("坎土曼", "铁", "农具", "血泡", "张文生", "打铁")):
+    def _build_extractive_answer(
+        self,
+        query: str,
+        retrieved_slices: List[Dict[str, Any]],
+        analysis: Dict[str, Any],
+        rag_mode: str = "hybrid"
+    ) -> str:
+        """无 API Key 时的精准句子抽取式问答与自然闲聊兜底（绝不乱加无关引用）"""
+        if analysis.get("intent") == "chitchat":
             return (
-                "关于三五九旅开荒初期的‘第一把坎土曼’，历史档案与老军垦实地访谈有着极为清晰的考据链条：\n\n"
-                f"1949年冬三五九旅挺进阿克苏与塔里木盆地北缘时，面对盐碱白滩，全军无铁制农具可用，且市面上根本采买不到[{c_idx(1)}]。"
-                "1950年2月，指战员们在阿克苏市郊的大生产营地架起土高炉，搜集战场遗存的迫击炮弹壳与废旧铁轨，经过千百次烈火淬火锻打，"
-                f"由老铁匠李文海带领战士们成功打造出第一把宽刃、重约4斤半的军垦坎土曼[{c_idx(1)}]。\n\n"
-                "正如2024年高校大学生赴阿拉尔市对93岁老战士张文生的实地访谈录音中所证实：‘当时野胡杨手柄粗粝，战士们连打带握，"
-                f"手心全被磨出血泡，血水渗进木柄甚至发红发暗，但这把从炮火中锻出的工具就是军垦人的命根子’[{c_idx(2)}]。\n\n"
-                f"在随后的百里‘胜利渠’筑坝攻坚中，战士们正是握着自力更生打制的坎土曼，在零下二十度的刺骨冰水中砸冰开渠[{c_idx(3)}]。"
-                "更令人动容的是，三五九旅官兵还将打制的第一批优质坎土曼无偿赠予当地维吾尔族贫苦农牧民，手把手传授深耕技术，"
-                f"使这柄凝聚着军人血汗的开荒农具，从诞生起便成为了兵地各族群众像石榴籽一样紧紧抱在一起共同开拓绿洲的深情信物[{c_idx(4)}]。"
-            )
-        if any(k in query for k in ("胜利渠", "冰水", "多浪河", "水渠", "王震")):
-            return (
-                "关于三五九旅修建百里‘胜利渠’的史实，有如下权威水利档案与兵地共建史料可考：\n\n"
-                f"1950年春，为解决阿克苏至阿拉尔戈壁荒地的灌溉难题，三五九旅官兵在多浪河上打响了修建百里胜利渠的攻坚战[{c_idx(1)}]。"
-                f"早春时节河水冰冷刺骨，战士们脱下棉衣跳进零下20度的刺骨冰水中排险打桩，用血肉之躯在激流中筑起拦水大坝[{c_idx(1)}]。\n\n"
-                f"王震将军与战士们同吃窝窝头、同抡坎土曼挖土方；全渠没有一台大型挖掘机，全凭十万双长满老茧的手与扁担箩筐，在百天之内凿通百余里干渠[{c_idx(1)}]。"
-                f"与此同时，官兵还协助各族群众修筑灌渠、赠送自制坎土曼并免费巡回义诊，让天山雪水化作滋养戈壁江南与民族团结的清泉[{c_idx(2)}]。"
-            )
-        if any(k in query for k in ("地窝子", "生活", "红柳", "夜校")):
-            return (
-                "三五九旅战士初入塔里木戈壁荒原时，寸草不生、飞沙蔽日，没有砖石瓦房可以遮风避雨：\n\n"
-                f"指战员因地制宜，在地下挖掘深约1.8至2米的坑穴，以戈壁红柳枝、沙枣木作梁，搭上野生芦苇草并涂抹厚厚的黄泥，修建出抵御狂暴黑风暴与冬夏严寒的‘地窝子’[{c_idx(1)}]。\n\n"
-                f"据老战士口述档案记载，荒漠中晨起被褥常落半指厚黄沙，轻轻一抖便扛起坎土曼上工[{c_idx(1)}]；"
-                "但在昏暗的墨水瓶柴油灯下，战士们读夜校、编快板、教文化，写下了‘生在井冈山，长在南泥湾，转战数万里，屯垦在天山’的革命浪漫主义诗篇。"
-                f"这种自力更生的拓荒精神，也体现在进疆初期架起塞外老纺车自制粗呢军服的壮举之中[{c_idx(2)}]。"
-            )
-        if any(k in query for k in ("纺车", "南泥湾", "军服", "自力更生", "羊毛")):
-            return (
-                "从陕北南泥湾到新疆塔里木，三五九旅始终秉持‘自己动手、丰衣足食’的优良传统：\n\n"
-                f"进疆初期，后方运输线绵延数千里，入冬时官兵面临‘衣破无布补、天寒无棉御’的绝境[{c_idx(1)}]。"
-                f"旅党委决定将南泥湾老纺车经验移植至塔河之畔，战士们拆解废弃车轱辘与戈壁胡杨木自制木纺车，剪集散落粗羊毛清洗搓捻，开展‘班班赛纺纱、人人争能手’竞赛[{c_idx(1)}]。\n\n"
-                f"自制粗呢军服不仅解决了御寒难题，更将南泥湾精神升华为‘热爱祖国、无私奉献、艰苦创业、开拓进取’的兵团精神[{c_idx(1)}]，"
-                f"与废炮弹壳铸坎土曼、红柳地窝子夜校共同构成了三五九旅屯垦戍边的精神底座[{c_idx(2)}]。"
-            )
-        if any(k in query for k in ("民族", "石榴籽", "维吾尔", "金珠玛米", "兵地")):
-            return (
-                "三五九旅在阿克苏与阿拉尔屯垦期间，留下了兵地携手、民族团结的动人史诗：\n\n"
-                f"官兵严守三大纪律八项注意，宁宿旷野古庙也不占民房一间；针对当地缺少铁质农具与水利技术的情况，将自制新坎土曼无偿赠予维吾尔族贫苦农民，并派医疗卫生员免费走村串户义诊、协助修渠[{c_idx(1)}]。\n\n"
-                f"维吾尔族乡亲们自发赶着毛驴车送来滚烫的烤馕和甜瓜，亲切称呼官兵为‘亲人金珠玛米’，形成了各民族‘像石榴籽一样紧紧抱在一起’共同开拓绿洲的深情局面[{c_idx(1)}]。"
+                "您好！我是 **屯垦智答 AI 助手**。\n\n"
+                "- **混合知识库检索（本地已就绪）**：内置 Okapi BM25 + 语义同义词向量引擎，您可以直接询问三五九旅进疆开荒、第一把坎土曼、百里胜利渠、红柳地窝子、塞外老纺车或老军垦访谈等任意细节，也可导入自己的 `.txt`/`.md` 调研笔记。\n"
+                "- **全领域生成式 AI 对话**：点击左下角 **「模型与 API 配置」** 填入任意主流大模型密钥（如硅基流动免费模型 `Qwen/Qwen2.5-7B-Instruct` 或 DeepSeek），即可开启与市面上完全一致的自由流式推理与多轮探讨。"
             )
 
-        if retrieved_slices:
-            first = retrieved_slices[0]["slice"]
-            second_part = ""
-            if len(retrieved_slices) > 1:
-                second = retrieved_slices[1]["slice"]
-                second_part = f"\n\n此外，结合《{second.get('title', '')}》（{second.get('source', '')}）记载：{second.get('content', '')[:110]}……[{c_idx(2)}]"
+        if not retrieved_slices:
+            if rag_mode == "strict":
+                return "根据当前已收录的【权威史料文献】与【一手调研访谈】双轨知识库检索结果，暂无与该问题直接相关的档案记载。"
             return (
-                f"依据三五九旅双轨知识库检索匹配度最高的史料《{first.get('title', '')}》（{first.get('source', '')}）考据[1]：\n\n"
-                f"{first.get('content', '')}[1]"
-                f"{second_part}"
+                f"当前本地双轨知识库中未检索到与 **“{query}”** 直接匹配的三五九旅史料切片（已自动过滤低相关性噪声，避免乱标引用）。\n\n"
+                "您可以通过以下任一方式继续：\n"
+                "1. 若这是通用问题或跨领域探讨，点击侧栏 **「模型与 API 配置」** 填入大模型 API Key（支持硅基流动免费模型、DeepSeek、通义千问、Gemini），即可解锁完整生成式 AI 对话；\n"
+                "2. 若您手头有相关口述史或文献文档，点击 **「录入调研素材」** 导入 `.txt` / `.md` 或粘贴文本，系统将自动分块建立混合索引。"
             )
 
-        return "当前知识库暂未检索到与该提问直接匹配的档案切片，您可以点击右上角【+ 录入调研素材】补充相关一手史料后再试。"
+        effective_q = analysis.get("rewritten_query") or query
+        extracted = global_rag_engine.extract_relevant_sentences(effective_q, retrieved_slices, max_per_slice=2)
+        if not extracted:
+            top_doc = retrieved_slices[0]["slice"]
+            return f"依据双轨知识库《{top_doc.get('title', '')}》考据：{top_doc.get('content', '')}[1]"
+
+        lines = ["基于双轨知识库混合检索（BM25 + 语义向量）命中的相关档案，为您梳理考据要点如下：\n"]
+        for item in extracted[:3]:
+            idx = item["index"]
+            doc = item["doc"]
+            track = "权威史料" if doc.get("type") == "official" else "一手访谈"
+            body = "".join(item["sentences"]).strip()
+            lines.append(f"- **《{doc.get('title', '')}》**（{track} · {doc.get('source', '')}）：{body}[{idx}]")
+
+        lines.append(
+            "\n> 提示：当前处于本地精准检索摘录模式；在侧栏「模型与 API 配置」填入在线大模型密钥后，可对上述史料进行深度归纳、对比与跨视角延展。"
+        )
+        return "\n".join(lines)
 
     # =========================================================================
-    # 模块一：双轨可溯源对话聊天流 (SSE Stream)
+    # 模块一：双轨可溯源对话聊天流 (真实 Token 级 SSE Stream)
     # =========================================================================
     async def chat_stream(
         self,
@@ -221,12 +351,16 @@ class LLMService:
         retrieved_slices: List[Dict[str, Any]],
         context: str,
         api_key: Optional[str] = None,
-        model_name: Optional[str] = "gemini-3.8-flash"
+        model_name: Optional[str] = "Qwen/Qwen2.5-7B-Instruct",
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None,
+        rag_mode: str = "hybrid",
+        query_analysis: Optional[Dict[str, Any]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """执行可溯源多轮对话，支持流式 SSE"""
+        """执行混合 RAG 可溯源多轮流式对话"""
         has_api_key = bool(api_key and api_key.strip())
+        analysis = query_analysis or {"intent": "rag_query", "original_query": query, "rewritten_query": query, "is_rewritten": False}
 
-        # 整理引用溯源卡片清单
         citations = []
         for item in retrieved_slices:
             doc = item["slice"]
@@ -240,42 +374,72 @@ class LLMService:
                 "title": doc.get("title"),
                 "source": doc.get("source"),
                 "similarity": item.get("similarity"),
-                "quote": doc_content[:130] + ("..." if len(doc_content) > 130 else "")
+                "matched_terms": item.get("matched_terms", []),
+                "quote": doc_content[:140] + ("..." if len(doc_content) > 140 else "")
             })
 
-        # 推送检索完成与引用信息
         yield {
             "type": "retrieval_ready",
-            "citations": citations
+            "citations": citations,
+            "analysis": analysis,
+            "rag_mode": rag_mode
         }
-        await asyncio.sleep(0.12)
 
-        answer_text = None
-        if has_api_key:
-            user_prompt = build_chat_user_prompt(query, context, history)
-            answer_text = await self.call_gemini(api_key, model_name, SYSTEM_PROMPT_CHAT_RAG, user_prompt)
-
-        actual_is_mock = not bool(answer_text)
-        if not answer_text:
-            answer_text = self._build_mock_chat_answer(query, retrieved_slices)
-
-        chunk_size = 25 if actual_is_mock else 30
-        delay = 0.035 if actual_is_mock else 0.02
         accumulated = ""
-        for i in range(0, len(answer_text), chunk_size):
-            chunk = answer_text[i:i + chunk_size]
-            accumulated += chunk
-            yield {
-                "type": "content_chunk",
-                "chunk": chunk,
-                "accumulated": accumulated
-            }
-            await asyncio.sleep(delay)
+        actual_is_mock = True
+        stream_error: Optional[str] = None
+
+        if has_api_key:
+            sys_prompt = SYSTEM_PROMPT_CHAT_STRICT if rag_mode == "strict" else SYSTEM_PROMPT_CHAT_HYBRID
+            user_prompt = build_chat_user_prompt(
+                query=query,
+                context=context,
+                history=history,
+                has_citations=len(citations) > 0,
+                rag_mode=rag_mode
+            )
+            try:
+                async for token in self.stream_llm_tokens(
+                    api_key=api_key,
+                    model=model_name,
+                    system_prompt=sys_prompt,
+                    user_prompt=user_prompt,
+                    history=history,
+                    provider=provider,
+                    base_url=base_url
+                ):
+                    actual_is_mock = False
+                    accumulated += token
+                    yield {
+                        "type": "content_chunk",
+                        "chunk": token,
+                        "accumulated": accumulated
+                    }
+            except Exception as e:
+                logger.warning(f"Streaming LLM failed, falling back to extractive QA: {e}")
+                stream_error = str(e)
+
+        if not accumulated.strip():
+            actual_is_mock = True
+            fallback_text = self._build_extractive_answer(query, retrieved_slices, analysis, rag_mode)
+            if stream_error:
+                fallback_text = f"> 在线大模型调用未成功（{stream_error[:90]}），已自动切换本地混合检索结果：\n\n" + fallback_text
+            chunk_size = 24
+            for i in range(0, len(fallback_text), chunk_size):
+                piece = fallback_text[i:i + chunk_size]
+                accumulated += piece
+                yield {
+                    "type": "content_chunk",
+                    "chunk": piece,
+                    "accumulated": accumulated
+                }
+                await asyncio.sleep(0.025)
 
         yield {
             "type": "chat_finished",
-            "full_answer": answer_text,
+            "full_answer": accumulated,
             "citations": citations,
+            "analysis": analysis,
             "is_mock": actual_is_mock
         }
 
@@ -287,7 +451,9 @@ class LLMService:
         topic: str,
         context: str,
         api_key: Optional[str] = None,
-        model_name: Optional[str] = "gemini-3.8-flash"
+        model_name: Optional[str] = None,
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """一键生成小红书爆款、抖音分镜表与标准 Markdown 调查问卷"""
         clean_topic = (topic or "").strip() or "让三五九旅第一把坎土曼走进青年"
@@ -303,7 +469,14 @@ class LLMService:
                 '  "survey_markdown": "# 《...》\\n..."\n'
                 "}"
             )
-            raw_output = await self.call_gemini(api_key, model_name, SYSTEM_PROMPT_CAMPAIGN_SURVEY, json_prompt)
+            raw_output, _ = await self.call_llm_complete(
+                api_key=api_key,
+                model=model_name,
+                system_prompt=SYSTEM_PROMPT_CAMPAIGN_SURVEY,
+                user_prompt=json_prompt,
+                provider=provider,
+                base_url=base_url
+            )
             parsed = self._extract_json_object(raw_output)
             if parsed and isinstance(parsed.get("xiaohongshu"), dict) and parsed.get("survey_markdown"):
                 douyin = parsed.get("douyin_script")
@@ -321,29 +494,11 @@ class LLMService:
                     "is_mock": False
                 }
 
-            if raw_output and "问卷" in raw_output:
-                fallback = copy.deepcopy(MOCK_CAMPAIGN_SURVEY_RESULT)
-                survey_start = raw_output.find("#")
-                return {
-                    "topic": clean_topic,
-                    "xiaohongshu": {
-                        "title": f"【三五九旅破圈】{clean_topic[:24]}：70年前这届军垦青年有多硬核！",
-                        "tags": ["#三五九旅", "#军垦青年", "#红色文旅", "#开荒精神", "#大学生特种兵"],
-                        "body": raw_output[:survey_start].strip() if survey_start > 50 else raw_output[:700]
-                    },
-                    "douyin_script": fallback["douyin_script"],
-                    "survey_markdown": raw_output[survey_start:] if survey_start != -1 else fallback["survey_markdown"],
-                    "is_mock": False
-                }
-
         res = copy.deepcopy(MOCK_CAMPAIGN_SURVEY_RESULT)
         res["topic"] = clean_topic
         if clean_topic != MOCK_CAMPAIGN_SURVEY_RESULT["topic"]:
-            res["xiaohongshu"]["title"] = f"【{clean_topic}】70年前这届三五九旅军垦青年，到底有多硬核？🔥"
-            res["xiaohongshu"]["body"] = (
-                f"🎯 本期专题：{clean_topic}\n\n"
-                + res["xiaohongshu"]["body"]
-            )
+            res["xiaohongshu"]["title"] = f"【{clean_topic}】70年前这届三五九旅军垦青年，到底有多硬核？"
+            res["xiaohongshu"]["body"] = f"本期专题：{clean_topic}\n\n" + res["xiaohongshu"]["body"]
             res["douyin_script"]["title"] = f"《{clean_topic} · 冻土下的回响》（60秒短视频分镜头脚本）"
             res["survey_markdown"] = res["survey_markdown"].replace(
                 "# 《三五九旅红色文化青年群体传播效果与文创接受度调查问卷》",
@@ -361,9 +516,11 @@ class LLMService:
         custom_topic: str,
         context: str,
         api_key: Optional[str] = None,
-        model_name: Optional[str] = "gemini-3.8-flash"
+        model_name: Optional[str] = None,
+        provider: Optional[str] = None,
+        base_url: Optional[str] = None
     ) -> Dict[str, Any]:
-        """根据选定的文创载体（小风扇/帽子/保温杯等）生成工业设计说明与商品级概念图"""
+        """根据选定的文创载体生成工业设计说明与商品级概念图"""
         matched_carrier = next((c for c in PRODUCT_CARRIERS if c["id"] == carrier_id), PRODUCT_CARRIERS[0])
         clean_topic = (custom_topic or "").strip()
         has_api_key = bool(api_key and api_key.strip())
@@ -382,7 +539,14 @@ class LLMService:
                 "请只输出一个合法 JSON 对象，格式如下：\n"
                 '{"subtitle": "...", "features": "...", "color_scheme": "...", "materials": "...", "prompt_zh": "...", "prompt_en": "..."}'
             )
-            raw_output = await self.call_gemini(api_key, model_name, SYSTEM_PROMPT_PRODUCT_DESIGN, user_prompt)
+            raw_output, _ = await self.call_llm_complete(
+                api_key=api_key,
+                model=model_name,
+                system_prompt=SYSTEM_PROMPT_PRODUCT_DESIGN,
+                user_prompt=user_prompt,
+                provider=provider,
+                base_url=base_url
+            )
             parsed = self._extract_json_object(raw_output)
             if parsed and parsed.get("prompt_en"):
                 subtitle = parsed.get("subtitle") or subtitle

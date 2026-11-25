@@ -7,3 +7,4 @@ venv/
 .DS_Store
 *.log
 _gh_pages_tmp/
+frontend/js/private_config.js

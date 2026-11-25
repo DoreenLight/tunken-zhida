@@ -1,9 +1,5 @@
 """
-三五九旅红色文化与文创赋能系统 - FastAPI 主服务
-提供三大核心模块：
-1. 屯垦智答·双轨可溯源对话系统 (Chat RAG)
-2. 新媒体全案传播策划与自动调查问卷生成
-3. 实用实体文创（小风扇/帽子/保温杯等）概念图与工业设计生成
+三五九旅红色文化与文创赋能系统 - FastAPI 主服务 (2.5 混合 RAG + 真实流式 AI 助手版)
 """
 
 import json
@@ -29,8 +25,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="屯垦智答 - 三五九旅红色文化与文创赋能系统",
-    description="集成双轨可溯源问答、全案新媒体与调研问卷自动生成、实体生活文创概念设计三大核心系统。",
-    version="2.0.0",
+    description="集成混合可溯源问答 RAG、全案新媒体与调研问卷生成、实体生活文创概念设计三大核心系统。",
+    version="2.5.0",
     lifespan=lifespan
 )
 
@@ -43,49 +39,78 @@ app.add_middleware(
 )
 
 
+# =========================================================================
 # 数据请求模型
+# =========================================================================
 class AddCustomFieldSliceRequest(BaseModel):
     title: str = Field(..., description="调研素材标题")
-    content: str = Field(..., description="老军垦口述录音整理或实地调研笔记正文")
+    content: str = Field(..., description="老军垦口述录音整理或实地调研长文档正文")
     source: Optional[str] = Field("一手老军垦实地访谈实录", description="出处档案或调查人")
     author: Optional[str] = Field("红色调研小组", description="记录人或机构")
     tags: Optional[List[str]] = Field(default_factory=list, description="标签")
+
+
+class LLMTestRequest(BaseModel):
+    provider: Optional[str] = Field("siliconflow", description="模型服务商")
+    base_url: Optional[str] = Field("", description="可选自定义 Base URL")
+    api_key: str = Field(..., description="API Key")
+    model: Optional[str] = Field("Qwen/Qwen2.5-7B-Instruct", description="模型名称")
 
 
 class ChatRequest(BaseModel):
     query: str = Field(..., description="用户对话提问")
     history: Optional[List[Dict[str, str]]] = Field(default_factory=list, description="多轮对话历史")
     api_key: Optional[str] = Field("", description="可选 API Key")
-    model: Optional[str] = Field("gemini-3.8-flash", description="基座模型")
+    model: Optional[str] = Field("Qwen/Qwen2.5-7B-Instruct", description="基座模型")
+    provider: Optional[str] = Field("", description="服务商: siliconflow/deepseek/dashscope/gemini/custom")
+    base_url: Optional[str] = Field("", description="可选自定义接口地址")
+    rag_mode: Optional[str] = Field("hybrid", description="问答模式: hybrid (智能助手) | strict (严格考据)")
 
 
 class CampaignRequest(BaseModel):
     topic: str = Field("让三五九旅第一把坎土曼走进青年", description="传播核心命题")
     api_key: Optional[str] = Field("", description="可选 API Key")
-    model: Optional[str] = Field("gemini-3.8-flash", description="基座模型")
+    model: Optional[str] = Field("Qwen/Qwen2.5-7B-Instruct", description="基座模型")
+    provider: Optional[str] = Field("", description="服务商")
+    base_url: Optional[str] = Field("", description="自定义接口地址")
 
 
 class ProductRequest(BaseModel):
     carrier_id: str = Field("fan", description="载体ID: fan, cap, cup, bag, magnet")
     topic: Optional[str] = Field("", description="文创定制主题或精神要素")
     api_key: Optional[str] = Field("", description="可选 API Key")
-    model: Optional[str] = Field("gemini-3.8-flash", description="基座模型")
+    model: Optional[str] = Field("Qwen/Qwen2.5-7B-Instruct", description="基座模型")
+    provider: Optional[str] = Field("", description="服务商")
+    base_url: Optional[str] = Field("", description="自定义接口地址")
 
 
 # =========================================================================
-# 基础与双轨知识库接口
+# 基础、连通性与双轨知识库管理接口
 # =========================================================================
-
 @app.get("/api/health")
 async def health_check():
     return {
         "status": "online",
-        "app_name": "屯垦智答 2.0 (Tunken Zhida)",
+        "app_name": "屯垦智答 2.5 (Tunken Zhida)",
+        "rag_engine": "hybrid-bm25-semantic",
         "knowledge_count": len(global_rag_engine.slices),
         "official_count": sum(1 for s in global_rag_engine.slices if s.get("type") == "official"),
         "custom_count": sum(1 for s in global_rag_engine.slices if s.get("type") == "custom"),
         "carriers_count": len(PRODUCT_CARRIERS)
     }
+
+
+@app.post("/api/llm/test")
+async def test_llm_connection(payload: LLMTestRequest):
+    """测试大模型 API 密钥与接口连通性"""
+    if not payload.api_key.strip():
+        raise HTTPException(status_code=400, detail="请先填写 API Key")
+    return await global_llm_service.test_connection(
+        provider=payload.provider,
+        base_url=payload.base_url,
+        api_key=payload.api_key,
+        model=payload.model
+    )
 
 
 @app.get("/api/presets/slices")
@@ -99,20 +124,34 @@ async def get_slices():
 
 @app.post("/api/slices/add")
 async def add_custom_slice(payload: AddCustomFieldSliceRequest):
-    """用户追加一手调研访谈素材"""
+    """用户追加一手调研访谈或长文档（超长自动语义分块）"""
     if not payload.title.strip() or not payload.content.strip():
         raise HTTPException(status_code=400, detail="切片标题与内容正文不能为空")
 
     new_doc = global_rag_engine.add_custom_field_slice(
-        title=payload.title,
-        content=payload.content,
-        source=payload.source,
-        author=payload.author,
+        title=payload.title.strip(),
+        content=payload.content.strip(),
+        source=(payload.source or "一手老军垦实地访谈实录").strip(),
+        author=(payload.author or "红色调研小组").strip(),
         tags=payload.tags
     )
     return {
-        "message": "实地调研素材已成功录入双轨知识库，并完成向量索引！",
+        "message": "调研资料已完成语义切片并载入混合检索引擎",
         "doc": new_doc,
+        "slices": global_rag_engine.slices,
+        "total_count": len(global_rag_engine.slices)
+    }
+
+
+@app.delete("/api/slices/{slice_id}")
+async def delete_custom_slice(slice_id: str):
+    """删除指定的用户自定义切片"""
+    removed = global_rag_engine.delete_slice(slice_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="未找到可删除的自定义切片（系统内置文献不可删除）")
+    return {
+        "message": f"已移除自定义切片 {slice_id}",
+        "slices": global_rag_engine.slices,
         "total_count": len(global_rag_engine.slices)
     }
 
@@ -129,24 +168,32 @@ async def reset_slices():
 
 
 # =========================================================================
-# 模块一：智能多轮可溯源问答 (Chat RAG - SSE Stream)
+# 模块一：混合 RAG 智能多轮流式对话 (SSE)
 # =========================================================================
-
 @app.post("/api/chat/stream")
 async def chat_stream(payload: ChatRequest):
-    """可溯源对话流端点 (SSE)"""
-    retrieved = global_rag_engine.search(payload.query, top_k=4)
+    """混合检索 + 真实流式对话端点 (SSE)"""
+    analysis = global_rag_engine.analyze_query(payload.query, payload.history)
+    retrieved = global_rag_engine.search(
+        payload.query,
+        top_k=4,
+        history=payload.history
+    )
     context = global_rag_engine.build_rag_context(retrieved)
 
     async def event_generator():
         try:
             async for chunk in global_llm_service.chat_stream(
                 query=payload.query,
-                history=payload.history,
+                history=payload.history or [],
                 retrieved_slices=retrieved,
                 context=context,
                 api_key=payload.api_key,
-                model_name=payload.model
+                model_name=payload.model,
+                provider=payload.provider,
+                base_url=payload.base_url,
+                rag_mode=payload.rag_mode or "hybrid",
+                query_analysis=analysis
             ):
                 event_line = f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
                 yield event_line.encode("utf-8")
@@ -167,29 +214,25 @@ async def chat_stream(payload: ChatRequest):
 # =========================================================================
 # 模块二：新媒体全案传播策划与调研问卷自动生成
 # =========================================================================
-
 @app.post("/api/campaign/generate")
 async def generate_campaign(payload: CampaignRequest):
-    """一键生成小红书爆款图文、抖音分镜脚本与标准 Markdown 调查问卷"""
     retrieved = global_rag_engine.search(payload.topic, top_k=2)
     context = global_rag_engine.build_rag_context(retrieved)
-
-    result = await global_llm_service.generate_campaign_and_survey(
+    return await global_llm_service.generate_campaign_and_survey(
         topic=payload.topic,
         context=context,
         api_key=payload.api_key,
-        model_name=payload.model
+        model_name=payload.model,
+        provider=payload.provider,
+        base_url=payload.base_url
     )
-    return result
 
 
 # =========================================================================
 # 模块三：实体文创实用载体设计与生图
 # =========================================================================
-
 @app.get("/api/product/carriers")
 async def get_carriers():
-    """获取所有支持的实用实体文创周边载体列表"""
     return {
         "count": len(PRODUCT_CARRIERS),
         "carriers": PRODUCT_CARRIERS
@@ -198,18 +241,17 @@ async def get_carriers():
 
 @app.post("/api/product/generate")
 async def generate_product(payload: ProductRequest):
-    """生成指定载体的工业设计说明、白底摄影 Prompt 与概念图"""
     retrieved = global_rag_engine.search(payload.topic or "三五九旅坎土曼", top_k=2)
     context = global_rag_engine.build_rag_context(retrieved)
-
-    design_data = await global_llm_service.generate_product_design(
+    return await global_llm_service.generate_product_design(
         carrier_id=payload.carrier_id,
-        custom_topic=payload.topic,
+        custom_topic=payload.topic or "",
         context=context,
         api_key=payload.api_key,
-        model_name=payload.model
+        model_name=payload.model,
+        provider=payload.provider,
+        base_url=payload.base_url
     )
-    return design_data
 
 
 # =========================================================================

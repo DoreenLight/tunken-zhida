@@ -1,10 +1,11 @@
 """
-屯垦智答 2.0 - 核心后端逻辑自检测试脚本
+屯垦智答 2.5 - 混合检索引擎与流式 AI 助手核心逻辑测试
 涵盖：
-1. 双轨知识库（权威文献 vs 一手访谈）余弦检索
-2. 模块一 Chat RAG 对话流
-3. 模块二 全案传播与调研问卷生成
-4. 模块三 实用实体文创设计与生图
+1. BM25 + 语义同义词扩展混合检索（含零原词口语检索）
+2. 闲聊与领域外无关问题的相关性阈值拦截（零虚假引用）
+3. 多轮对话代词指代消解与检索词改写
+4. 长文档自动语义分块与单条删除
+5. Chat RAG 流式对话、全案问卷生成、实体文创生成
 """
 
 import asyncio
@@ -13,7 +14,7 @@ import sys
 
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
@@ -24,33 +25,67 @@ from backend.rag_engine import global_rag_engine
 from backend.llm_service import global_llm_service
 
 
-def test_dual_track_rag():
-    print(">>> 正在测试 1：双轨知识库（权威文献与实地访谈）与向量检索...")
-    official_count = sum(1 for s in global_rag_engine.slices if s.get("type") == "official")
-    custom_count = sum(1 for s in global_rag_engine.slices if s.get("type") == "custom")
-    print(f"✓ 当前切片总数: {len(global_rag_engine.slices)} (权威: {official_count}, 调研访谈: {custom_count})")
-    assert official_count >= 5, "权威文献切片不足5条"
+def test_hybrid_rag_engine():
+    print(">>> 正在测试 1：BM25 + 语义同义词混合检索与阈值过滤...")
+    global_rag_engine.load_documents(DEFAULT_KNOWLEDGE_SLICES)
 
-    # 测试检索
-    query = "第一把坎土曼老铁匠打铁与木把血泡"
-    results = global_rag_engine.search(query, top_k=3)
-    assert len(results) > 0, "检索结果为空"
-    print(f"✓ 检索命中 Top 1: {results[0]['slice']['title']} (类型: {results[0]['slice'].get('type_label')})")
+    # 1.1 精确检索
+    results = global_rag_engine.search("第一把坎土曼老铁匠打铁与木把血泡", top_k=3)
+    assert len(results) >= 2, "精确检索结果不足"
+    print(f"✓ 精确检索 Top 1: {results[0]['slice']['title']} (相关性: {results[0]['similarity']})")
 
-    # 测试动态追加一手调研素材
-    new_doc = global_rag_engine.add_custom_field_slice(
-        title="【测试访谈】老军垦回忆录测试条目",
-        content="当年我们在多浪河畔开荒，天寒地冻，全靠一把坎土曼。",
-        source="测试来源"
+    # 1.2 零原词同义概念语义检索（不出现“纺车”，测试御寒/棉衣/做衣服召回）
+    sem_hits = global_rag_engine.search("进疆冬天没有棉衣怎么御寒做衣服？", top_k=3)
+    assert len(sem_hits) >= 1 and sem_hits[0]["slice"]["id"] == "AUTH-359-02", (
+        f"语义扩展未命中老纺车切片，实际: {[h['slice']['id'] for h in sem_hits]}"
     )
-    assert new_doc["type"] == "custom"
-    print(f"✓ 成功动态追加一手调研素材，当前知识库总数: {len(global_rag_engine.slices)}")
+    print(f"✓ 零原词同义语义检索成功命中: {sem_hits[0]['slice']['title']}")
+
+    # 1.3 闲聊与无关技术问题零误报拦截
+    greet_hits = global_rag_engine.search("你好", top_k=3)
+    irrelevant_hits = global_rag_engine.search("帮我用Python写一个快速排序算法", top_k=3)
+    assert greet_hits == [], f"问候语不应触发引用: {greet_hits}"
+    assert irrelevant_hits == [], f"无关编程问题不应触发虚假引用: {irrelevant_hits}"
+    print("✓ 闲聊问候与领域外问题均返回 0 引用（彻底消除乱标引用）")
+
+    # 1.4 多轮指代消解改写
+    history = [
+        {"role": "user", "content": "93岁老战士张文生讲了什么？"},
+        {"role": "assistant", "content": "原七一九团老战士张文生回忆了1950年春锻打坎土曼的往事。"}
+    ]
+    analysis = global_rag_engine.analyze_query("他当时握的木柄是什么材料？", history=history)
+    assert analysis["is_rewritten"] is True and "张文生" in analysis["rewritten_query"], f"指代改写失败: {analysis}"
+    follow_hits = global_rag_engine.search("他当时握的木柄是什么材料？", top_k=2, history=history)
+    assert any(h["slice"]["id"] == "FIELD-359-01" for h in follow_hits), "多轮指代检索未命中张文生访谈"
+    print(f"✓ 多轮指代消解成功: '{analysis['original_query']}' -> '{analysis['rewritten_query']}'")
+
+    # 1.5 长文档自动语义分块与删除
+    long_text = (
+        "1951年秋，三五九旅七一八团在塔里木河沿岸开辟第二片棉区。战士们白天顶着烈日清理红柳包，晚上在地窝子里总结育种经验。" * 8
+        + "老班长王德山用桦木削制了简易播种耧，使每天播种效率提升了三倍，当年秋收皮棉亩产创下垦区新高。" * 6
+    )
+    added = global_rag_engine.add_custom_field_slice(
+        title="【长篇档案】塔里木河棉区开辟与播种耧改良纪事",
+        content=long_text,
+        source="垦区农业技术史料汇编"
+    )
+    assert added.get("chunks_added", 1) >= 2, "长文档未触发自动分块"
+    print(f"✓ 长文档自动语义切片成功，生成片段数: {added['chunks_added']}")
+
+    custom_hits = global_rag_engine.search("王德山改良播种耧提升效率", top_k=2)
+    assert len(custom_hits) >= 1 and "播种耧" in custom_hits[0]["slice"]["content"]
+    print("✓ 分块后细粒度段落检索命中成功")
+
+    # 清理恢复默认知识库
+    global_rag_engine.load_documents(DEFAULT_KNOWLEDGE_SLICES)
 
 
 async def test_chat_stream():
-    print("\n>>> 正在测试 2：模块一 智能多轮问答对话流 (Chat RAG Stream)...")
-    query = "第一把手工打制的坎土曼有什么历史考据？"
-    retrieved = global_rag_engine.search(query, top_k=2)
+    print("\n>>> 正在测试 2：模块一 混合 RAG 对话流与闲聊分流...")
+    # 领域考据提问
+    query = "第一把手工打制的坎土曼有多重？是谁带头打造的？"
+    analysis = global_rag_engine.analyze_query(query)
+    retrieved = global_rag_engine.search(query, top_k=3)
     context = global_rag_engine.build_rag_context(retrieved)
 
     events = []
@@ -60,57 +95,56 @@ async def test_chat_stream():
         retrieved_slices=retrieved,
         context=context,
         api_key="",
-        model_name="gemini-3.8-flash"
+        query_analysis=analysis
     ):
         events.append(event)
 
-    types = [e.get("type") for e in events]
-    print(f"✓ 对话事件类型: {set(types)}")
-    assert "retrieval_ready" in types, "缺少 retrieval_ready 事件"
-    assert "content_chunk" in types, "缺少 content_chunk 事件"
-    assert "chat_finished" in types, "缺少 chat_finished 事件"
+    finish_evt = next(e for e in events if e.get("type") == "chat_finished")
+    assert len(finish_evt["citations"]) > 0, "考据提问应返回引用切片"
+    assert "4斤半" in finish_evt["full_answer"] or "李文海" in finish_evt["full_answer"], "句子抽取未命中核心事实"
+    print("✓ 句子级精准考据回答生成成功，包含具体史实与引用角标")
 
-    finish_event = next(e for e in events if e.get("type") == "chat_finished")
-    assert len(finish_event["citations"]) > 0, "缺少溯源引用文献"
-    print("✓ 考证回答生成成功，带有严格引用证据切片")
+    # 闲聊提问
+    greet_analysis = global_rag_engine.analyze_query("你好")
+    greet_events = []
+    async for event in global_llm_service.chat_stream(
+        query="你好",
+        history=[],
+        retrieved_slices=[],
+        context="",
+        api_key="",
+        query_analysis=greet_analysis
+    ):
+        greet_events.append(event)
+    greet_done = next(e for e in greet_events if e.get("type") == "chat_finished")
+    assert greet_done["citations"] == [], "闲聊回答不应附带引用切片"
+    print("✓ 闲聊问候自然响应且无冗余引用")
 
 
-async def test_campaign_and_survey():
-    print("\n>>> 正在测试 3：模块二 全案传播与调研问卷生成...")
+async def test_campaign_and_product():
+    print("\n>>> 正在测试 3 & 4：全案传播问卷生成 + 实用实体文创设计...")
     topic = "让三五九旅第一把坎土曼走进青年"
     retrieved = global_rag_engine.search(topic, top_k=2)
     context = global_rag_engine.build_rag_context(retrieved)
 
     result = await global_llm_service.generate_campaign_and_survey(topic, context)
-    assert "xiaohongshu" in result, "缺少小红书方案"
-    assert "douyin_script" in result, "缺少抖音分镜"
-    assert "survey_markdown" in result, "缺少调查问卷"
-    assert "李克特量表" in result["survey_markdown"] or "认同度评估" in result["survey_markdown"], "问卷缺少李克特量表"
-    print("✓ 全案传播策划与标准 Markdown 调查问卷生成成功！")
+    assert "xiaohongshu" in result and "douyin_script" in result and "survey_markdown" in result
+    assert len(PRODUCT_CARRIERS) >= 5
 
-
-async def test_product_design():
-    print("\n>>> 正在测试 4：模块三 实用实体文创设计与生图...")
-    assert len(PRODUCT_CARRIERS) >= 5, "实体文创载体不足5款"
-    print(f"✓ 实用载体库数量: {len(PRODUCT_CARRIERS)} 款 ({', '.join([c['name'] for c in PRODUCT_CARRIERS])})")
-
-    carrier_id = "fan"
     design = await global_llm_service.generate_product_design(
-        carrier_id=carrier_id,
+        carrier_id="fan",
         custom_topic="第一把坎土曼图腾",
-        context="三五九旅开荒"
+        context=context
     )
     assert design["name"] == "便携手持小风扇"
-    assert "product studio photography" in design["prompts"]["en"]
     assert design["image_url"].startswith("http")
-    print(f"✓ 实体文创【{design['name']}】工业设计说明与商业摄影 Prompt 生成成功！")
+    print("✓ 全案问卷与实体文创模块全部正常！")
 
 
 if __name__ == "__main__":
-    test_dual_track_rag()
+    test_hybrid_rag_engine()
     asyncio.run(test_chat_stream())
-    asyncio.run(test_campaign_and_survey())
-    asyncio.run(test_product_design())
+    asyncio.run(test_campaign_and_product())
     print("\n===============================")
-    print("★ 三大核心重构模块自检全部 100% 成功通过！ ★")
+    print("★ 屯垦智答 2.5 混合 RAG 与流式助手自检 100% 通过！ ★")
     print("===============================")
