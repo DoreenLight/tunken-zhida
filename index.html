@@ -47,7 +47,7 @@
             </span>
             <span class="nav-copy">
               <span class="nav-title">智能多轮问答</span>
-              <span class="nav-sub">双轨 RAG 考据溯源</span>
+              <span class="nav-sub">混合 RAG · BM25 + 语义</span>
             </span>
           </button>
 
@@ -72,12 +72,24 @@
           </button>
         </nav>
 
+        <!-- 多会话历史管理 -->
+        <div class="session-sidebar-box">
+          <div class="session-sidebar-head">
+            <span class="nav-section-label" style="padding: 0;">对话历史</span>
+            <button id="btn-new-session" class="kb-view-link" type="button">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>新建对话</span>
+            </button>
+          </div>
+          <div id="session-list" class="session-list"></div>
+        </div>
+
         <!-- 双轨知识库档案卡 -->
         <div class="kb-sidebar-card">
           <div class="kb-sidebar-header">
             <span class="kb-sidebar-title">双轨知识库</span>
-            <button id="header-counts" class="kb-view-link" type="button" title="查看全部双轨文献与访谈切片">
-              <span>档案目录</span>
+            <button id="header-counts" class="kb-view-link" type="button" title="检索、查看与管理双轨知识库切片">
+              <span>检索与管理</span>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           </div>
@@ -92,8 +104,8 @@
             </div>
           </div>
           <button id="btn-open-slice-modal" class="btn-outline-full" type="button">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <span>录入调研素材</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>导入文档 / 录入访谈</span>
           </button>
         </div>
       </div>
@@ -101,11 +113,11 @@
       <div class="sidebar-bottom">
         <div class="runtime-status" id="runtime-mode-badge">
           <span class="status-dot"></span>
-          <span id="runtime-mode-text">云端独立运行</span>
+          <span id="runtime-mode-text">混合检索引擎就绪</span>
         </div>
         <button id="btn-open-drawer" class="btn-sidebar-settings" type="button">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span>模型与 API 配置</span>
+          <span id="sidebar-model-label">模型与 API 配置</span>
         </button>
       </div>
     </aside>
@@ -114,18 +126,22 @@
     <main class="workspace">
 
       <!-- ===================================================================
-           模块一：智能多轮问答 (Chat RAG + 双轨考据展开板)
+           模块一：智能多轮问答 (混合 RAG + 真实流式 AI 助手)
            =================================================================== -->
       <section id="tab-chat" class="panel-section chat-view">
         <div class="view-header">
           <div>
-            <h1 class="view-title">可溯源学术考证对话</h1>
-            <p class="view-subtitle">严格依据权威史料与一手调研切片回答，句末附档案引用角标</p>
+            <h1 class="view-title">混合检索 AI 助手</h1>
+            <p class="view-subtitle">Okapi BM25 + 语义同义词向量融合检索 · 多轮指代消解 · 相关性阈值自动过滤噪声</p>
           </div>
           <div class="view-actions">
+            <div class="mode-segmented" role="group" aria-label="问答检索模式">
+              <button class="mode-seg-btn active" data-rag-mode="hybrid" type="button" title="命中史料时精准引用，日常问题自然对话">智能助手</button>
+              <button class="mode-seg-btn" data-rag-mode="strict" type="button" title="严格仅依据双轨知识库回答，绝不外推">严格考据</button>
+            </div>
             <button id="btn-clear-chat" class="btn-secondary" type="button">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-              <span>清空对话</span>
+              <span>清空当前对话</span>
             </button>
           </div>
         </div>
@@ -137,18 +153,22 @@
         <div class="chat-composer-wrap">
           <div class="quick-pills" aria-label="推荐考据提问">
             <button class="quick-pill" type="button">第一把手工打制的坎土曼有什么历史考据与老军垦口述？</button>
-            <button class="quick-pill" type="button">93岁老战士张文生口述中提到的打铁手心血泡实录</button>
+            <button class="quick-pill" type="button">战士们进疆初期冬天没有棉衣是怎么御寒做衣服的？</button>
             <button class="quick-pill" type="button">三五九旅官兵当年如何在零下20度冰水中修筑胜利渠？</button>
-            <button class="quick-pill" type="button">红柳地窝子生活史与地下两米的革命乐观主义</button>
+            <button class="quick-pill" type="button">93岁老战士张文生回忆打铁时手心血泡的细节是什么？</button>
           </div>
 
           <div class="chat-composer">
-            <input
+            <textarea
               id="chat-input"
-              type="text"
+              rows="1"
               class="chat-input"
-              placeholder="输入历史考据问题，例如：第一把坎土曼是如何用废炮弹壳锻造的？"
-            />
+              placeholder="输入任何问题（支持多轮追问如“他当时握的木柄是什么树？”；Enter 发送，Shift+Enter 换行）"
+            ></textarea>
+            <button id="btn-stop-chat" class="btn-secondary btn-stop" type="button" style="display: none;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+              <span>停止生成</span>
+            </button>
             <button id="btn-send-chat" class="btn-primary" type="button">
               <span>发送提问</span>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -353,44 +373,56 @@
     </main>
   </div>
 
-  <!-- 录入一手调研素材弹窗 -->
+  <!-- 录入一手调研素材与文档导入弹窗 -->
   <div id="slice-modal" class="modal-overlay" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>录入实地调研访谈 / 老军垦口述笔记</h3>
+        <h3>导入研究文档 / 录入访谈实录</h3>
         <button id="btn-close-slice-modal" class="modal-close" type="button" aria-label="关闭">×</button>
       </div>
       <div class="modal-body-stack">
         <div class="sample-banner">
-          <span>示范田野调查口述样本：</span>
-          <button id="btn-fill-sample" class="btn-secondary" type="button">填入 93 岁老军垦张文生口述</button>
+          <span>快速导入 `.txt` / `.md` 或使用示范样本：</span>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <input id="slice-file-input" type="file" accept=".txt,.md,.markdown,.csv" style="display: none;" />
+            <button id="btn-import-file" class="btn-secondary" type="button">选择本地文档</button>
+            <button id="btn-fill-sample" class="btn-secondary" type="button">填入张文生口述样本</button>
+          </div>
         </div>
         <div>
-          <label for="new-slice-title" class="field-label">素材标题</label>
+          <label for="new-slice-title" class="field-label">文档或访谈标题</label>
           <input id="new-slice-title" type="text" class="text-input" placeholder="例如：2024 阿拉尔老军垦口述访谈录" />
         </div>
         <div>
-          <label for="new-slice-source" class="field-label">出处与调研队伍</label>
+          <label for="new-slice-source" class="field-label">档案出处与调研人</label>
           <input id="new-slice-source" type="text" class="text-input" placeholder="例如：大学生红色文化调研队实录" />
         </div>
         <div>
-          <label for="new-slice-content" class="field-label">访谈正文（即时载入检索池并保存在本地浏览器）</label>
-          <textarea id="new-slice-content" rows="4" class="text-input textarea-input" placeholder="粘贴一手调研录音文字整理或口述笔记..."></textarea>
+          <label for="new-slice-content" class="field-label">正文内容（长篇文档将自动按语义段落智能切片建索引）</label>
+          <textarea id="new-slice-content" rows="5" class="text-input textarea-input" placeholder="粘贴口述整理稿、地方志摘录或导入文档内容..."></textarea>
         </div>
       </div>
       <div class="modal-footer">
         <button id="btn-cancel-slice-modal" class="btn-secondary" type="button">取消</button>
-        <button id="btn-submit-slice" class="btn-primary" type="button">载入双轨知识库</button>
+        <button id="btn-submit-slice" class="btn-primary" type="button">分块并载入知识库</button>
       </div>
     </div>
   </div>
 
-  <!-- 双轨知识库总览弹窗 -->
+  <!-- 双轨知识库检索测试与管理弹窗 -->
   <div id="kb-modal" class="modal-overlay" style="display: none;">
     <div class="modal-card modal-wide">
       <div class="modal-header">
-        <h3>双轨知识库档案总览（权威史料 + 一手调研）</h3>
+        <h3>双轨知识库混合检索测试与切片管理</h3>
         <button id="btn-close-kb-modal" class="modal-close" type="button" aria-label="关闭">×</button>
+      </div>
+      <div class="kb-search-bar">
+        <input
+          id="kb-search-input"
+          type="text"
+          class="text-input"
+          placeholder="输入关键词或自然语言问题实时测试 BM25 + 语义混合检索命中排序（如：没有棉衣怎么过冬）..."
+        />
       </div>
       <div id="kb-list-container" class="kb-list"></div>
       <div class="modal-footer modal-footer-between">
@@ -400,36 +432,62 @@
     </div>
   </div>
 
-  <!-- 全局配置抽屉 -->
+  <!-- 全局模型与 API 配置抽屉 -->
   <div id="drawer-overlay" class="drawer-overlay" style="display: none;"></div>
   <aside id="config-drawer" class="drawer-content" style="display: none;">
-    <div>
+    <div style="overflow-y: auto; padding-right: 2px;">
       <div class="modal-header">
-        <h3>全局模型与 API 配置</h3>
+        <h3>大模型与流式推理配置</h3>
         <button id="btn-close-drawer" class="modal-close" type="button" aria-label="关闭">×</button>
       </div>
       <div class="modal-body-stack">
         <div>
-          <label for="cfg-model-select" class="field-label">基座推理模型</label>
-          <select id="cfg-model-select" class="text-input">
-            <option value="gemini-3.8-flash">Google Gemini 3.8 Flash（推荐）</option>
-            <option value="gemini-flash-latest">Gemini Flash Latest</option>
-            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite</option>
-            <option value="deepseek-chat">DeepSeek Chat（兼容协议）</option>
+          <label for="cfg-provider-select" class="field-label">推理平台（支持主流 OpenAI 兼容协议与 Gemini）</label>
+          <select id="cfg-provider-select" class="text-input">
+            <option value="siliconflow">硅基流动 SiliconFlow（推荐 · 含免费模型）</option>
+            <option value="deepseek">DeepSeek 官方 API</option>
+            <option value="dashscope">阿里云百炼（通义千问）</option>
+            <option value="gemini">Google Gemini API</option>
+            <option value="custom">自定义 OpenAI 兼容接口</option>
           </select>
         </div>
+
+        <div id="cfg-baseurl-group">
+          <label for="cfg-base-url" class="field-label">API Base URL</label>
+          <input id="cfg-base-url" type="text" class="text-input" value="https://api.siliconflow.cn/v1" placeholder="https://api.siliconflow.cn/v1" />
+        </div>
+
         <div>
-          <label for="cfg-api-key" class="field-label">API Key 授权密钥（仅存本地浏览器）</label>
-          <input id="cfg-api-key" type="password" class="text-input" placeholder="留空即自动启用三五九旅专家研习库" />
+          <label for="cfg-model-select" class="field-label">模型名称（可点选推荐或自由输入）</label>
+          <input id="cfg-model-select" list="cfg-model-suggestions" type="text" class="text-input" value="Qwen/Qwen2.5-7B-Instruct" placeholder="例如：Qwen/Qwen2.5-7B-Instruct" />
+          <datalist id="cfg-model-suggestions">
+            <option value="Qwen/Qwen2.5-7B-Instruct">硅基流动免费 · Qwen2.5-7B-Instruct</option>
+            <option value="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B">硅基流动免费 · DeepSeek-R1-Distill-Qwen-7B</option>
+            <option value="deepseek-ai/DeepSeek-V3">硅基流动 · DeepSeek-V3</option>
+            <option value="deepseek-chat">DeepSeek 官方 · deepseek-chat</option>
+            <option value="qwen-plus">阿里云百炼 · qwen-plus</option>
+            <option value="gemini-2.5-flash">Google Gemini · gemini-2.5-flash</option>
+          </datalist>
+        </div>
+
+        <div>
+          <label for="cfg-api-key" class="field-label">API Key 授权密钥（仅保存在当前设备本地）</label>
+          <input id="cfg-api-key" type="password" class="text-input" placeholder="粘贴 API Key 即可开启真实流式生成对话" />
           <p class="helper-text">
-            即使不填写 API Key 或无后端服务，本系统内置的客户端双轨 TF-IDF 检索与专家研习库仍可完整运行；填写密钥后可直接调用在线大模型。
+            提示：注册硅基流动（siliconflow.cn）即可免费使用 <code>Qwen/Qwen2.5-7B-Instruct</code> 等模型；若留空，系统将使用本地混合检索 + 句子级精准摘录作答。
           </p>
         </div>
-        <button id="btn-save-key" class="btn-primary" type="button" style="width: 100%;">保存配置</button>
+
+        <div id="cfg-test-result" class="test-result-box" style="display: none;"></div>
+
+        <div style="display: flex; gap: 8px;">
+          <button id="btn-test-key" class="btn-secondary" type="button" style="flex: 1; justify-content: center;">测试连接</button>
+          <button id="btn-save-key" class="btn-primary" type="button" style="flex: 1;">保存配置</button>
+        </div>
       </div>
     </div>
     <div class="drawer-foot">
-      支持直接通过浏览器「添加到桌面 / 安装应用」作为独立软件打开
+      兼容桌面网页、GitHub Pages 与后续 Android 原生 APK 容器
     </div>
   </aside>
 
