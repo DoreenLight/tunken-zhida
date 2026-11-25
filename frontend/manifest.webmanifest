@@ -1,0 +1,17 @@
+{
+  "name": "屯垦智答 2.0",
+  "short_name": "屯垦智答",
+  "description": "三五九旅红色文化双轨可溯源问答、传播策划与实体文创设计工作台",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#F5F2EB",
+  "theme_color": "#B42318",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "tunken-zhida",
+  "version": "1.0.0",
+  "description": "“屯垦智答”——三五九旅红色文化与文创赋能智能工作流系统",
+  "main": "backend/main.py",
+  "scripts": {
+    "start": "python run.py",
+    "dev": "uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
+    "serve": "python run.py"
+  },
+  "keywords": [
+    "359旅",
+    "红色文化",
+    "文创赋能",
+    "智能工作流",
+    "RAG",
+    "Gemini"
+  ],
+  "author": "Antigravity AI Agent",
+  "license": "MIT"
+}
