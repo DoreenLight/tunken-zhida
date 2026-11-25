@@ -1031,18 +1031,20 @@ function updateRuntimeBadge(isLocalBackend) {
   const badge = document.getElementById("runtime-mode-badge");
   const textEl = document.getElementById("runtime-mode-text");
   if (!badge || !textEl) return;
+  const isCapNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if (isLocalBackend) {
     badge.classList.add("local");
     textEl.innerText = "本地后端混合 RAG 已连接";
   } else {
     badge.classList.remove("local");
-    textEl.innerText = "独立混合 RAG 已就绪";
+    textEl.innerText = isCapNative ? "Android 原生应用 · 混合 RAG" : "独立混合 RAG 已就绪";
   }
 }
 
 async function detectBackend() {
   const host = window.location.hostname || "";
-  if (window.location.protocol === "file:" || host.endsWith("github.io")) {
+  const isCapNative = !!(window.Capacitor && (window.Capacitor.isNativePlatform?.() || window.location.protocol === "capacitor:"));
+  if (isCapNative || window.location.protocol === "file:" || host.endsWith("github.io") || (host === "localhost" && window.Capacitor)) {
     AppState.backendAvailable = false;
     updateRuntimeBadge(false);
     return;
@@ -1097,8 +1099,10 @@ async function detectBackend() {
 // =========================================================================
 function bindNavTabs() {
   const navBtns = document.querySelectorAll(".nav-item");
+  const mobileTabBtns = document.querySelectorAll(".mobile-tab-item");
   const switchTab = (target) => {
     navBtns.forEach(b => b.classList.toggle("active", b.dataset.tab === target));
+    mobileTabBtns.forEach(b => b.classList.toggle("active", b.dataset.tab === target));
     AppState.activeTab = target;
     document.getElementById("tab-chat").style.display = target === "chat" ? "flex" : "none";
     document.getElementById("tab-campaign").style.display = target === "campaign" ? "flex" : "none";
@@ -1107,6 +1111,7 @@ function bindNavTabs() {
   };
 
   navBtns.forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
+  mobileTabBtns.forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
   const brandHome = document.getElementById("brand-home-btn");
   if (brandHome) brandHome.addEventListener("click", () => switchTab("chat"));
 }
@@ -1891,15 +1896,41 @@ function bindCampaignEvents() {
 
   const downloadSurveyBtn = document.getElementById("btn-download-survey");
   if (downloadSurveyBtn) {
-    downloadSurveyBtn.onclick = () => {
-      const blob = new Blob([AppState.campaignResult.survey_markdown || ""], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "三五九旅红色文化青年传播效果调查问卷.md";
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast("已导出调查问卷 Markdown 文件", "success");
+    downloadSurveyBtn.onclick = async () => {
+      const mdText = AppState.campaignResult.survey_markdown || "";
+      const fileName = "三五九旅红色文化青年传播效果调查问卷.md";
+      const isMobileOrNative = !!(window.Capacitor || /Android|iPhone|iPad/i.test(navigator.userAgent));
+
+      if (isMobileOrNative && navigator.share) {
+        try {
+          const mdFile = new File([mdText], fileName, { type: "text/markdown" });
+          if (navigator.canShare && navigator.canShare({ files: [mdFile] })) {
+            await navigator.share({ title: fileName, files: [mdFile] });
+            showToast("已唤起系统分享 / 保存菜单", "success");
+            return;
+          }
+          await navigator.share({ title: fileName, text: mdText });
+          showToast("已唤起系统分享", "success");
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+        }
+      }
+
+      try {
+        const blob = new Blob([mdText], { type: "text/markdown;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast("已导出调查问卷 Markdown 文件", "success");
+      } catch (e) {
+        copyText(mdText, "调查问卷 Markdown");
+      }
     };
   }
 }

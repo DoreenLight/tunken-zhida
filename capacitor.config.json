@@ -1,0 +1,8 @@
+{
+  "appId": "com.doreenlight.tunkenzhida",
+  "appName": "屯垦智答",
+  "webDir": "frontend",
+  "server": {
+    "androidScheme": "https"
+  }
+}

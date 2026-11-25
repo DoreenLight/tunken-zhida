@@ -1,21 +1,28 @@
 {
   "name": "tunken-zhida",
-  "version": "1.0.0",
-  "description": "“屯垦智答”——三五九旅红色文化与文创赋能智能工作流系统",
+  "version": "2.5.0",
+  "description": "“屯垦智答 2.5”——三五九旅红色文化混合RAG智能助手与文创赋能工作台",
   "main": "backend/main.py",
   "scripts": {
     "start": "python run.py",
     "dev": "uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
-    "serve": "python run.py"
+    "serve": "python run.py",
+    "cap:sync": "npx cap sync android",
+    "apk:build": "powershell -ExecutionPolicy Bypass -File scripts/build_apk.ps1"
   },
   "keywords": [
     "359旅",
     "红色文化",
     "文创赋能",
-    "智能工作流",
-    "RAG",
-    "Gemini"
+    "Hybrid-RAG",
+    "Capacitor",
+    "Android"
   ],
-  "author": "Antigravity AI Agent",
-  "license": "MIT"
+  "author": "DoreenLight",
+  "license": "MIT",
+  "devDependencies": {
+    "@capacitor/android": "^6.2.3",
+    "@capacitor/cli": "^6.2.3",
+    "@capacitor/core": "^6.2.3"
+  }
 }
